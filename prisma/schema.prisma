@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,4 +8,158 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum HatchIntensity {
+  light
+  moderate
+  heavy
+}
+
+enum TimeOfDay {
+  morning
+  midday
+  afternoon
+  evening
+}
+
+enum FishingMethod {
+  dry
+  nymph
+  streamer
+  wet
+  other
+}
+
+// TRIAGED — used by Alert model (not implemented in v1.0)
+enum ConditionType {
+  gauge_height
+  discharge
+  temperature
+}
+
+// TRIAGED — used by Alert model (not implemented in v1.0)
+enum ThresholdOperator {
+  above
+  below
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model River {
+  id          Int            @id @default(autoincrement())
+  name        String
+  state       String
+  description String?
+  sections    RiverSection[]
+  created_at  DateTime       @default(now())
+}
+
+model RiverSection {
+  id              Int             @id @default(autoincrement())
+  river_id        Int
+  river           River           @relation(fields: [river_id], references: [id])
+  name            String
+  usgs_site_code  String
+  latitude_start  Float
+  longitude_start Float
+  latitude_end    Float
+  longitude_end   Float
+  target_species  String[]
+  ideal_gauge_min Float?
+  ideal_gauge_max Float?
+  ideal_temp_min  Float?
+  ideal_temp_max  Float?
+  readings        StreamReading[]
+  hatch_reports   HatchReport[]
+  catch_logs      CatchLog[]
+  stocking_events StockingEvent[] // TRIAGED — schema defined, not implemented in v1.0
+  alerts          Alert[]
+  created_at      DateTime        @default(now())
+}
+
+model StreamReading {
+  id                Int          @id @default(autoincrement())
+  section_id        Int
+  section           RiverSection @relation(fields: [section_id], references: [id])
+  gauge_height_ft   Float
+  discharge_cfs     Float
+  temperature_c     Float?
+  reading_timestamp DateTime     // timestamp of the reading as reported by USGS
+  ingested_at       DateTime     @default(now()) // when this record was written to the DB
+}
+
+model HatchReport {
+  id             Int            @id @default(autoincrement())
+  user_id        String         // Clerk user ID
+  section_id     Int
+  section        RiverSection   @relation(fields: [section_id], references: [id])
+  insect_species String
+  intensity      HatchIntensity
+  time_of_day    TimeOfDay
+  report_date    DateTime
+  notes          String?
+  created_at     DateTime       @default(now())
+}
+
+model CatchLog {
+  id                  Int           @id @default(autoincrement())
+  user_id             String        // Clerk user ID
+  section_id          Int
+  section             RiverSection  @relation(fields: [section_id], references: [id])
+  catch_date          DateTime
+  caught_species      String
+  method              FishingMethod
+  fly_pattern         String
+  fly_size            Int           // hook size as integer
+  location_name       String?       // free-text spot name
+  location_lat        Float?
+  location_lng        Float?
+  photo_url           String?       // URL returned by object storage after upload
+  notes               String?
+  conditions_snapshot Json          // JSONB — frozen at creation, never updated
+  created_at          DateTime      @default(now())
+}
+
+// TRIAGED — schema defined, not implemented in v1.0
+// No Alert-related routes, UI, or cron logic will exist in v1.0.
+model Alert {
+  id                Int               @id @default(autoincrement())
+  user_id           String            // Clerk user ID
+  section_id        Int
+  section           RiverSection      @relation(fields: [section_id], references: [id])
+  condition_type    ConditionType
+  operator          ThresholdOperator
+  threshold_value   Float
+  is_active         Boolean           @default(true)
+  last_triggered_at DateTime?
+  created_at        DateTime          @default(now())
+}
+
+// TRIAGED — schema defined, not implemented in v1.0
+// No StockingEvent-related routes, UI, or cron logic will exist in v1.0.
+model StockingEvent {
+  id            Int          @id @default(autoincrement())
+  section_id    Int
+  section       RiverSection @relation(fields: [section_id], references: [id])
+  stocked_date  DateTime     // date the stocking event occurred
+  species       String       // e.g. "Brown Trout", "Rainbow Trout"
+  quantity      Int?         // number of fish stocked, if reported by agency
+  source_agency String       // e.g. "Montana FWP"
+  source_url    String?      // direct link to agency report if available
+  ingested_at   DateTime     @default(now())
+}
+
+model User {
+  id           String   @id       // matches Clerk user ID
+  email        String   @unique
+  display_name String?
+  home_state   String?
+  created_at   DateTime @default(now())
 }
